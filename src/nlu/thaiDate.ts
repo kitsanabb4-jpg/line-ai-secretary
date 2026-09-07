@@ -32,6 +32,34 @@ const WEEKDAYS: Record<string, number> = {
   อาทิตย์: 0, จันทร์: 1, อังคาร: 2, พุธ: 3, พฤหัส: 4, พฤหัสบดี: 4, ศุกร์: 5, เสาร์: 6,
 };
 
+// ชื่อเดือนไทย (เต็มและย่อ) -> เลขเดือน 1-12 ใช้กับ "วันที่ 1 ตุลาคม", "15 ก.ย. 2569" ฯลฯ
+const THAI_MONTHS: Record<string, number> = {
+  มกราคม: 1, "ม.ค.": 1, มค: 1,
+  กุมภาพันธ์: 2, "ก.พ.": 2, กพ: 2,
+  มีนาคม: 3, "มี.ค.": 3, มีค: 3,
+  เมษายน: 4, "เม.ย.": 4, เมย: 4,
+  พฤษภาคม: 5, "พ.ค.": 5, พค: 5,
+  มิถุนายน: 6, "มิ.ย.": 6, มิย: 6,
+  กรกฎาคม: 7, "ก.ค.": 7, กค: 7,
+  สิงหาคม: 8, "ส.ค.": 8, สค: 8,
+  กันยายน: 9, "ก.ย.": 9, กย: 9,
+  ตุลาคม: 10, "ต.ค.": 10, ตค: 10,
+  พฤศจิกายน: 11, "พ.ย.": 11, พย: 11,
+  ธันวาคม: 12, "ธ.ค.": 12, ธค: 12,
+};
+// เรียงชื่อเดือนจากยาวไปสั้น กัน regex match ผิดตัว (เช่น "มีนาคม" ต้องมาก่อน "มีค")
+const THAI_MONTH_PATTERN = Object.keys(THAI_MONTHS)
+  .sort((a, b) => b.length - a.length)
+  .map((name) => name.replace(/\./g, "\\."))
+  .join("|");
+
+/** แปลงปี พ.ศ. (2 หรือ 4 หลัก) หรือ ค.ศ. ให้เป็น ค.ศ. เสมอ เช่น 69 หรือ 2569 -> 2026, 2026 -> 2026 คงเดิม */
+function normalizeYear(y: number): number {
+  if (y < 100) return y + 2500 - 543; // เลขปีย่อ 2 หลัก ถือว่าเป็น พ.ศ. เสมอ เช่น "69" -> 2569 -> 2026
+  if (y >= 2400) return y - 543; // พ.ศ. 4 หลัก -> ค.ศ.
+  return y; // ค.ศ. อยู่แล้ว
+}
+
 /** แปลงเลขไทยแบบคำพูด เช่น "สิบเอ็ด" -> 11, "ยี่สิบสาม" -> 23 ให้เป็นตัวเลข (รองรับ 0-31 พอสำหรับวันที่/ชั่วโมง) */
 function thaiWordsToNumber(word: string): number | null {
   word = word.trim();
@@ -171,8 +199,34 @@ export function parseThaiDate(text: string, ref = nowInTz()): { y: number; m: nu
     const d = ref.add(7, "day");
     return { y: d.year(), m: d.month() + 1, d: d.date(), matched: text.match(/(อาทิตย์|สัปดาห์)หน้า/)![0] };
   }
+  // วันที่แบบตัวเลขเต็ม D/M/Y หรือ D-M-Y เช่น "15/9/69", "1/10/2569", "15-09-2026"
+  let m = text.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
+  if (m) {
+    const day = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10);
+    const year = normalizeYear(parseInt(m[3], 10));
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      return { y: year, m: month, d: day, matched: m[0] };
+    }
+  }
+  // วันที่ + ชื่อเดือนไทย เช่น "วันที่ 1 ตุลาคม", "15 ก.ย. 2569", "1 ต.ค. 69"
+  m = text.match(new RegExp(`(?:วันที่\\s*)?(\\d{1,2})\\s*(${THAI_MONTH_PATTERN})\\s*(\\d{2,4})?`));
+  if (m) {
+    const day = parseInt(m[1], 10);
+    const month = THAI_MONTHS[m[2]];
+    if (day >= 1 && day <= 31 && month) {
+      let year = m[3] ? normalizeYear(parseInt(m[3], 10)) : ref.year();
+      let candidate = ref.year(year).month(month - 1).date(day);
+      // ไม่ได้ระบุปีมาเอง และวันที่นั้นผ่านไปแล้วในปีปัจจุบัน -> หมายถึงปีหน้า
+      if (!m[3] && candidate.isBefore(ref, "day")) {
+        candidate = candidate.add(1, "year");
+        year = candidate.year();
+      }
+      return { y: year, m: month, d: day, matched: m[0] };
+    }
+  }
   // ทุกวันที่ N / วันที่ N (เดือนนี้ ถ้าผ่านไปแล้วเลื่อนไปเดือนหน้า)
-  let m = text.match(/วันที่\s*(\d{1,2}|[ก-๙]{1,10})/);
+  m = text.match(/วันที่\s*(\d{1,2}|[ก-๙]{1,10})/);
   if (m) {
     const day = extractNumber(m[1]);
     if (day && day >= 1 && day <= 31) {
