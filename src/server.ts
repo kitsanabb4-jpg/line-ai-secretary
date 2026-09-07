@@ -3,6 +3,7 @@ import { env } from "./config/env";
 import { webhookRouter } from "./api/webhook";
 import { schedulerRouter } from "./api/scheduler";
 import { healthRouter } from "./api/health";
+import { testChatRouter } from "./api/testChat";
 import { logger } from "./utils/logger";
 
 const app = express();
@@ -19,6 +20,11 @@ app.use(
 app.use("/api", webhookRouter);
 app.use("/api", schedulerRouter);
 app.use("/api", healthRouter);
+// เปิด /api/test-chat เฉพาะตอน DEMO_MODE=true เท่านั้น (คุยกับ AI ผ่าน HTTP ตรง ๆ ไม่ต้องผ่าน LINE)
+// ป้องกันไม่ให้ endpoint ทดสอบนี้เปิดเป็น public บน production โดยไม่ตั้งใจ
+if (env.DEMO_MODE) {
+  app.use("/api", testChatRouter);
+}
 
 app.get("/", (_req, res) => {
   res.send("🐷🐱 LINE AI Personal Secretary is running. DEMO_MODE=" + env.DEMO_MODE);
