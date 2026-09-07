@@ -196,7 +196,7 @@ model Payment {
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
-  amount      Float
+  amount      Float?
   dueDate     DateTime
   isRecurring Boolean   @default(false)
   recurrenceRule String?
