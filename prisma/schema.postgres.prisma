@@ -2,6 +2,7 @@
 // เวอร์ชัน PostgreSQL สำหรับ production (Supabase/Neon free tier)
 // วิธีใช้: cp prisma/schema.postgres.prisma prisma/schema.prisma แล้วรัน npx prisma migrate dev --name init
 // ดูขั้นตอนแบบละเอียดใน SETUP.md หัวข้อ "ฐานข้อมูล (Production)"
+// (PostgreSQL รองรับ enum จริง จึงใช้ enum แทน String เพื่อความปลอดภัยของข้อมูลที่ดีกว่า SQLite)
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -91,14 +92,13 @@ model Preference {
   updatedAt                DateTime @updatedAt
 }
 
-// เก็บข้อความดิบทุกข้อความที่เข้ามา (สำหรับ debug / audit) — ไม่เก็บเนื้อหาที่ล่อแหลมเกินจำเป็น
 model Message {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  direction   String   // "IN" | "OUT"
-  channel     String   // "TEXT" | "VOICE" | "IMAGE" | "POSTBACK"
-  content     String   // ข้อความ (แปลงจากเสียงแล้ว หรือข้อความจริง) — ถูก redact บางส่วนใน log
+  direction   String
+  channel     String
+  content     String
   intent      String?
   createdAt   DateTime @default(now())
 
@@ -106,14 +106,13 @@ model Message {
   @@index([createdAt])
 }
 
-// เก็บ state การสนทนาล่าสุด สำหรับ slot-filling / follow-up context
 model Conversation {
   id             String   @id @default(cuid())
   userId         String
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  pendingIntent  String?  // เช่น CREATE_REMINDER ที่ยังขาดเวลา
-  pendingParams  String?  // JSON string ของ params ที่รวบรวมมาแล้วบางส่วน
-  lastEntityRef  String?  // JSON string อ้างอิง entity ล่าสุด (taskId/reminderId) เพื่อใช้กับ "อันนั้น"
+  pendingIntent  String?
+  pendingParams  String?
+  lastEntityRef  String?
   updatedAt      DateTime @updatedAt
 
   @@index([userId])
@@ -125,7 +124,7 @@ model Memory {
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   type       MemoryType
   content    String
-  tags       String?    // comma-separated keywords เพื่อช่วยค้นหา
+  tags       String?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
@@ -141,7 +140,7 @@ model Task {
   notes       String?
   dueDate     DateTime?
   status      TaskStatus @default(PENDING)
-  sourceText  String?    // ข้อความต้นฉบับที่สร้าง task นี้
+  sourceText  String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -159,13 +158,13 @@ model Reminder {
   taskId            String?
   task              Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
   title             String
-  reminderTime      DateTime       // เวลาที่จะแจ้งเตือนครั้งถัดไป (absolute, UTC)
+  reminderTime      DateTime
   type              ReminderType   @default(ONE_TIME)
-  recurrenceRule    String?        // เช่น "DAY_OF_MONTH:1" สำหรับ "ทุกวันที่ 1"
-  offsetMinutes     Int            @default(0) // ก่อนกำหนดกี่นาที (0 = ตรงเวลา)
+  recurrenceRule    String?
+  offsetMinutes     Int            @default(0)
   status            ReminderStatus @default(PENDING)
   snoozeCount       Int            @default(0)
-  originalTime      DateTime?      // เวลาต้นฉบับก่อน snooze/reschedule (ไว้อ้างอิง)
+  originalTime      DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
@@ -197,12 +196,12 @@ model Payment {
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
-  amount      Float
+  amount      Float?
   dueDate     DateTime
   isRecurring Boolean   @default(false)
-  recurrenceRule String? // เช่น "DAY_OF_MONTH:1"
+  recurrenceRule String?
   paidAt      DateTime?
-  status      String    @default("PENDING") // PENDING | PAID | OVERDUE
+  status      String    @default("PENDING")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -236,7 +235,7 @@ model Medication {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
   dosage        String?
-  scheduleTimes String   // comma separated "HH:mm" เช่น "08:00,20:00"
+  scheduleTimes String
   startDate     DateTime @default(now())
   endDate       DateTime?
   active        Boolean  @default(true)
