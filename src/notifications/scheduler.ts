@@ -60,8 +60,11 @@ export async function runSchedulerTick() {
 async function runEscalationCheck(now: Date) {
   const threshold = dayjs(now).subtract(60, "minute").toDate();
 
+  // หมายเหตุ: จงใจไม่กรองด้วย reminder.reminderTime ที่ระดับ DB query เพราะ reminderTime ของ recurring
+  // reminder จะถูก roll forward ไปอนาคตทันทีตอนแจ้งเตือนครั้งแรก (ไม่ตรงกับเวลาที่ "ส่งจริง" อีกต่อไป)
+  // ใช้ notification.sentAt (เวลาที่ส่งจริง) เป็นตัวตัดสินแทน ถึงจะแม่นยำกว่าเสมอ
   const candidates = await prisma.reminder.findMany({
-    where: { status: "PENDING", reminderTime: { lte: threshold } },
+    where: { status: "PENDING" },
     include: { notifications: { where: { status: "SENT" } }, user: true },
   });
 
@@ -69,6 +72,9 @@ async function runEscalationCheck(now: Date) {
   for (const reminder of candidates) {
     // ต้องมีการแจ้งเตือนที่ส่งสำเร็จไปแล้ว "ครั้งเดียว" เท่านั้น (ครั้งแรก) ถ้าเคยเตือนซ้ำไปแล้วก็ไม่เตือนซ้ำอีก
     if (reminder.notifications.length !== 1) continue;
+    const firstSentAt = reminder.notifications[0].sentAt;
+    // ยังไม่เคยส่งจริง (sentAt ว่าง) หรือส่งไปยังไม่ถึง 60 นาที -> ยังไม่ต้องเตือนซ้ำ
+    if (!firstSentAt || firstSentAt > threshold) continue;
 
     try {
       const message = `⏰ ยังไม่ได้ตอบรับเรื่อง "${reminder.title}" เลยนะคะ ยังต้องการให้เตือนอยู่ไหมคะ?`;
