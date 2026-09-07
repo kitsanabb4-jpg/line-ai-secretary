@@ -1,0 +1,33 @@
+# Render Blueprint — deploy ฟรีด้วยคลิกเดียว (Render free web service tier)
+# วิธีใช้: push โค้ดขึ้น GitHub แล้วไปที่ https://dashboard.render.com/blueprints -> New Blueprint Instance
+# แล้วชี้มาที่ repo นี้ Render จะอ่านไฟล์นี้แล้วสร้าง service ให้อัตโนมัติ
+# หลังจากนั้นต้องไปตั้งค่า Environment Variables ที่ขาด (API keys ต่าง ๆ) เองใน Render Dashboard
+services:
+  - type: web
+    name: line-ai-secretary
+    env: node
+    plan: free
+    region: singapore
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    startCommand: npx prisma migrate deploy && npm start
+    envVars:
+      - key: DEMO_MODE
+        value: "false"
+      - key: APP_TIMEZONE
+        value: "Asia/Bangkok"
+      - key: DATABASE_URL
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: AI_PROVIDER
+        value: "gemini"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: STT_PROVIDER
+        value: "groq_whisper"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SCHEDULER_SECRET
+        sync: false

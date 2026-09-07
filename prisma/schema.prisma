@@ -1,0 +1,223 @@
+// Prisma schema — LINE AI Personal Secretary
+//
+// ค่าเริ่มต้น: SQLite (ไฟล์เดียว ไม่ต้องติดตั้งอะไรเพิ่ม) เหมาะกับ local dev / DEMO_MODE
+// สำหรับ production แนะนำเปลี่ยน provider เป็น "postgresql" แล้วใช้ Supabase หรือ Neon (free tier)
+// ดูขั้นตอนแบบละเอียดใน SETUP.md หัวข้อ "ฐานข้อมูล"
+//
+// หมายเหตุสำคัญ: SQLite ไม่รองรับ Prisma `enum` (connector limitation) จึงใช้ String แทน enum
+// ทุกจุดในสคีมานี้ ค่าที่ใช้ได้จริงของแต่ละฟิลด์ (ตรงกับ enum เดิม) ระบุไว้เป็นคอมเมนต์กำกับไว้
+// ถ้าสลับไปใช้ schema.postgres.prisma (production) จะกลับไปใช้ enum จริงเพื่อความปลอดภัยของข้อมูลที่ดีกว่า
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String   @id @default(cuid())
+  lineUserId     String   @unique
+  displayName    String?
+  timezone       String   @default("Asia/Bangkok")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  preferences    Preference?
+  messages       Message[]
+  conversations  Conversation[]
+  memories       Memory[]
+  tasks          Task[]
+  reminders      Reminder[]
+  events         Event[]
+  payments       Payment[]
+  debts          Debt[]
+  medications    Medication[]
+  notifications  Notification[]
+
+  @@index([lineUserId])
+}
+
+model Preference {
+  id                       String   @id @default(cuid())
+  userId                   String   @unique
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyBriefingEnabled     Boolean  @default(false)
+  dailyBriefingTime        String   @default("07:00")
+  eveningSummaryEnabled    Boolean  @default(false)
+  eveningSummaryTime       String   @default("20:00")
+  updatedAt                DateTime @updatedAt
+}
+
+// เก็บข้อความดิบทุกข้อความที่เข้ามา (สำหรับ debug / audit) — ไม่เก็บเนื้อหาที่ล่อแหลมเกินจำเป็น
+model Message {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  direction   String   // "IN" | "OUT"
+  channel     String   // "TEXT" | "VOICE" | "IMAGE" | "POSTBACK"
+  content     String   // ข้อความ (แปลงจากเสียงแล้ว หรือข้อความจริง) — ถูก redact บางส่วนใน log
+  intent      String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// เก็บ state การสนทนาล่าสุด สำหรับ slot-filling / follow-up context
+model Conversation {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pendingIntent  String?  // เช่น CREATE_REMINDER ที่ยังขาดเวลา
+  pendingParams  String?  // JSON string ของ params ที่รวบรวมมาแล้วบางส่วน
+  lastEntityRef  String?  // JSON string อ้างอิง entity ล่าสุด (taskId/reminderId) เพื่อใช้กับ "อันนั้น"
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Memory {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String     // PERSONAL | PREFERENCE | WORK | FINANCE | TASK | IMPORTANT_FACT
+  content    String
+  tags       String?    // comma-separated keywords เพื่อช่วยค้นหา
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([type])
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  notes       String?
+  dueDate     DateTime?
+  status      String     @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | CANCELLED
+  sourceText  String?    // ข้อความต้นฉบับที่สร้าง task นี้
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  reminders   Reminder[]
+
+  @@index([userId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+model Reminder {
+  id                String         @id @default(cuid())
+  userId            String
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId            String?
+  task              Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  title             String
+  reminderTime      DateTime       // เวลาที่จะแจ้งเตือนครั้งถัดไป (absolute, UTC)
+  type              String         @default("ONE_TIME") // ONE_TIME | DAILY | WEEKLY | MONTHLY | YEARLY | CUSTOM
+  recurrenceRule    String?        // เช่น "DAY_OF_MONTH:1" สำหรับ "ทุกวันที่ 1"
+  offsetMinutes     Int            @default(0) // ก่อนกำหนดกี่นาที (0 = ตรงเวลา)
+  status            String         @default("PENDING") // PENDING | COMPLETED | SNOOZED | MISSED | CANCELLED
+  snoozeCount       Int            @default(0)
+  originalTime      DateTime?      // เวลาต้นฉบับก่อน snooze/reschedule (ไว้อ้างอิง)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  notifications     Notification[]
+
+  @@index([userId])
+  @@index([reminderTime])
+  @@index([status])
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  startTime   DateTime
+  endTime     DateTime?
+  location    String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([startTime])
+}
+
+model Payment {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  amount      Float
+  dueDate     DateTime
+  isRecurring Boolean   @default(false)
+  recurrenceRule String? // เช่น "DAY_OF_MONTH:1"
+  paidAt      DateTime?
+  status      String    @default("PENDING") // PENDING | PAID | OVERDUE
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([dueDate])
+}
+
+model Debt {
+  id                   String     @id @default(cuid())
+  userId               String
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditor             String
+  originalAmount       Float
+  remainingAmount      Float
+  minimumPayment       Float?
+  interestRate         Float?
+  dueDate              DateTime?
+  installmentsRemaining Int?
+  status               String     @default("ACTIVE") // ACTIVE | PAID_OFF | OVERDUE
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+model Medication {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  dosage        String?
+  scheduleTimes String   // comma separated "HH:mm" เช่น "08:00,20:00"
+  startDate     DateTime @default(now())
+  endDate       DateTime?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminderId  String?
+  reminder    Reminder?          @relation(fields: [reminderId], references: [id], onDelete: SetNull)
+  message     String
+  scheduledAt DateTime
+  sentAt      DateTime?
+  status      String    @default("QUEUED") // QUEUED | SENT | FAILED | ACKNOWLEDGED
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([scheduledAt])
+  @@index([status])
+}
