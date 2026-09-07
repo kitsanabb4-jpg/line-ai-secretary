@@ -292,7 +292,10 @@ export async function executeIntent(userId: string, intent: string, params: Inte
       } else if (target.type === "task") {
         await taskService.updateTask(userId, target.id, { title: params.title, dueDate: parsed?.date });
       } else if (target.type === "payment") {
-        if (typeof params.amount === "number") await financeService.updatePaymentAmount(userId, target.id, params.amount);
+        // รองรับคำพูดแก้ไขสั้น ๆ เช่น "แก้เป็น 500", "เปลี่ยนเป็น 500" — ถ้า AI provider ไม่ได้แยก amount มาให้ตรง ๆ
+        // (เช่น mock provider) ให้ลองสกัดตัวเลขจากข้อความดิบเป็น fallback แทนที่จะเงียบไม่ทำอะไรเลย
+        const newAmount = typeof params.amount === "number" ? params.amount : extractAmountFromText(params.rawText);
+        if (newAmount != null) await financeService.updatePaymentAmount(userId, target.id, newAmount);
         if (parsed?.date) await financeService.updatePaymentDueDate(userId, target.id, parsed.date);
       } else if (target.type === "event") {
         await eventService.updateEvent(userId, target.id, { title: params.title, startTime: parsed?.date });
@@ -380,7 +383,7 @@ interface TargetCandidate {
 /**
  * หา entity ที่กำลังพูดถึง (task/reminder/payment/debt/event) — ไม่ใช้แค่ข้อความล่าสุดอย่างเดียว
  * ลำดับการค้นหา:
- *  1) ถ้า targetRef มีเนื้อหาเจาะจง (ไม่ใช่แค่ "อันนั้น"/"เมื่อกี้") -> ค้นหาจากชื่อรายการล่าสุดของทุกหมวดที่ตรงกับคำนั้น
+ *  1) ถ้า targetRef มีเนื้อหาเจาะจง (ไม่ใช่แค่ "อันนั้น"/"เมื่อกี้") -> ค้นหาจากชื่อรายการล่าสุดของทุกหมวดที่ตรงกับคำนั้น (exact match ก่อน แล้วค่อย substring)
  *  2) ถ้าไม่มี/เป็นคำกำกวม -> ใช้ lastEntityRef ที่จำไว้จากข้อความก่อนหน้า
  *  3) ถ้าไม่มีเลย -> ใช้รายการที่สร้าง/แก้ไขล่าสุดสุดในทุกหมวดรวมกัน
  */
@@ -406,6 +409,14 @@ async function resolveTargetEntity(userId: string, targetRef?: string) {
 
   if (!isGeneric) {
     const refN = normalize(ref);
+    // ต้องเช็ค exact match ก่อนเสมอ — กันเคส เช่น targetRef="ค่าไฟ" ไปแมตช์ผิดกับ reminder ที่ระบบสร้างอัตโนมัติ
+    // ตอน CREATE_PAYMENT (ชื่อ "จ่ายค่าไฟ 100 บาท") ซึ่งมี substring "ค่าไฟ" อยู่ด้วยและสร้างทีหลัง (createdAt ใหม่กว่า)
+    // ถ้าใช้แค่ substring+recency จะเลือกผิดเป็น reminder แทนที่จะเป็น payment ตัวจริงที่ผู้ใช้หมายถึง
+    const exactMatches = candidates
+      .filter((c) => normalize(c.title) === refN)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    if (exactMatches.length > 0) return exactMatches[0];
+
     const matches = candidates
       .filter((c) => {
         const titleN = normalize(c.title);
