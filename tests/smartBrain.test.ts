@@ -229,3 +229,17 @@ describe("Event context & natural phrasing", () => {
   });
 });
 
+describe("แก้ไขยอดเงินด้วยคำพูดสั้น ๆ ('แก้เป็น'/'เปลี่ยนเป็น')", () => {
+  it("'แก้เป็น 500' ต่อจากรายการเงินล่าสุด -> แก้ยอดรายการเดิม ไม่สร้างรายการใหม่ (แม้ provider ไม่ได้แยก amount มาให้ตรง ๆ)", async () => {
+    const user = await createTestUser("update-amount-shorthand");
+    await executeIntent(user.id, "CREATE_PAYMENT", { title: "ค่าไฟ", dateText: "15/9/69", amount: 100 });
+
+    const result = await executeIntent(user.id, "UPDATE_TASK", { rawText: "แก้เป็น 500" });
+    expect(result.reply).toContain("ค่าไฟ");
+
+    const count = await prisma.payment.count({ where: { userId: user.id } });
+    expect(count).toBe(1); // ต้องไม่มีรายการใหม่ซ้ำ
+    const payment = await prisma.payment.findFirst({ where: { userId: user.id, title: "ค่าไฟ" } });
+    expect(payment?.amount).toBe(500);
+  });
+});
