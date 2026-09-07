@@ -13,8 +13,18 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      - name: Debug secret length (ไม่พิมพ์ค่าจริงออกมา แค่ความยาว เพื่อเช็คว่า secret ถูกตั้งไว้จริงหรือว่าง/สั้นผิดปกติ)
+        run: |
+          echo "SCHEDULER_SECRET length: ${#SCHEDULER_SECRET}"
+        env:
+          SCHEDULER_SECRET: ${{ secrets.SCHEDULER_SECRET }}
       - name: Call scheduler tick endpoint
         run: |
-          curl -sf -X GET "https://line-ai-secretary-95c3.onrender.com/api/scheduler/tick" \
-            -H "x-scheduler-secret: ${{ secrets.SCHEDULER_SECRET }}"
-
+          http_code=$(curl -s -o /tmp/response.txt -w "%{http_code}" -X GET "https://line-ai-secretary-95c3.onrender.com/api/scheduler/tick" \
+            -H "x-scheduler-secret: ${{ secrets.SCHEDULER_SECRET }}")
+          echo "HTTP status: $http_code"
+          echo "Response body:"
+          cat /tmp/response.txt
+          if [ "$http_code" -ge 400 ]; then
+            exit 1
+          fi
