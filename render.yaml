@@ -9,7 +9,7 @@ services:
     plan: free
     region: singapore
     buildCommand: npm install && npm run prisma:generate && npm run build
-    startCommand: npx prisma migrate deploy && npm start
+    startCommand: npx prisma db push --accept-data-loss && npm start
     envVars:
       - key: DEMO_MODE
         value: "false"
@@ -22,11 +22,11 @@ services:
       - key: LINE_CHANNEL_SECRET
         sync: false
       - key: AI_PROVIDER
-        value: "gemini"
+        value: "mock"
       - key: GEMINI_API_KEY
         sync: false
       - key: STT_PROVIDER
-        value: "groq_whisper"
+        value: "mock"
       - key: GROQ_API_KEY
         sync: false
       - key: SCHEDULER_SECRET
