@@ -24,6 +24,7 @@ export class MockAIProvider implements AIProvider {
     else if (/(เมื่อกี้|ก่อนหน้านี้).*(บอก|พูด)/.test(text)) intent = "SEARCH_MEMORY";
     else if (/ลืม.*ที่จำ|ลบความจำ/.test(text)) intent = "FORGET_MEMORY";
     else if (/เลื่อน/.test(text)) intent = "RESCHEDULE";
+    else if (/แก้เป็น|เปลี่ยนเป็น|แก้ไขเป็น/.test(text)) intent = "UPDATE_TASK";
     else if (/เสร็จแล้ว|ทำเสร็จ/.test(text)) intent = "COMPLETE_TASK";
     else if (/ต้องจ่ายอะไรบ้าง|จ่ายอะไรบ้าง|มีหนี้อะไร/.test(text)) intent = "FINANCIAL_SUMMARY";
     else if (/หนี้/.test(text) && /(ยืม|กู้|เป็นหนี้)/.test(text)) intent = "CREATE_DEBT";
