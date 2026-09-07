@@ -1,0 +1,20 @@
+name: Scheduler Ping
+
+# ยิง /api/scheduler/tick ทุก 5 นาที เพื่อให้ reminder/notification queue ทำงานอัตโนมัติ
+# (Render free tier ไม่มี background job ในตัว ต้องมีตัวจุดชนวนจากภายนอกมาเรียกเป็นระยะ)
+# ผลพลอยได้: การยิงเป็นระยะยังช่วยไม่ให้ Render free service หลับ (sleep) จาก inactivity ด้วย
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call scheduler tick endpoint
+        run: |
+          curl -sf -X GET "https://line-ai-secretary-95c3.onrender.com/api/scheduler/tick" \
+            -H "x-scheduler-secret: ${{ secrets.SCHEDULER_SECRET }}"
+
