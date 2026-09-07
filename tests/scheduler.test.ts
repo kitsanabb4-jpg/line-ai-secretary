@@ -16,6 +16,9 @@ describe("Scheduler escalation — เตือนซ้ำถ้าไม่ต
       title: "ส่งรายงาน",
       reminderTime: nowInTz().subtract(90, "minute").toDate(),
     });
+    // createReminder ยิง queueNotification (สถานะ QUEUED) ให้อัตโนมัติอยู่แล้ว — ลบทิ้งก่อน
+    // เพื่อจำลองสถานการณ์ให้ชัดเจนว่า "เตือนไปแล้วครั้งเดียว (SENT)" แทนที่จะปนกับตัวที่ยังไม่ส่ง
+    await prisma.notification.deleteMany({ where: { reminderId: reminder.id } });
 
     // จำลองว่าแจ้งเตือนครั้งแรกไปแล้ว (SENT) แต่ผู้ใช้ยังไม่กดตอบสนองอะไรเลย (status ยังเป็น PENDING)
     await prisma.notification.create({
@@ -42,6 +45,7 @@ describe("Scheduler escalation — เตือนซ้ำถ้าไม่ต
       title: "ประชุมทีม",
       reminderTime: nowInTz().subtract(150, "minute").toDate(),
     });
+    await prisma.notification.deleteMany({ where: { reminderId: reminder.id } });
 
     // จำลองว่าเตือนไปแล้ว 2 ครั้ง (ครั้งแรก + เตือนซ้ำรอบก่อนหน้า) แต่ผู้ใช้ก็ยังไม่ตอบสนอง
     await prisma.notification.createMany({
@@ -79,6 +83,7 @@ describe("Scheduler escalation — เตือนซ้ำถ้าไม่ต
       reminderTime: nowInTz().subtract(90, "minute").toDate(),
     });
     await prisma.reminder.update({ where: { id: reminder.id }, data: { status: "COMPLETED" } });
+    await prisma.notification.deleteMany({ where: { reminderId: reminder.id } });
     await prisma.notification.create({
       data: {
         userId: user.id,
@@ -94,4 +99,3 @@ describe("Scheduler escalation — เตือนซ้ำถ้าไม่ต
     expect(result.escalated).toBe(0);
   });
 });
-
