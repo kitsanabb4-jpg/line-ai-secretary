@@ -65,7 +65,7 @@ export async function createReminder(
 
 /** สร้าง reminder หลายอันพร้อมกัน (เช่น "พรุ่งนี้สิบโมงเตือนส่งเอกสาร แล้วหกโมงเย็นเตือนซื้อของ") */
 export async function createReminders(userId: string, items: { title: string; reminderTime: Date; recurrence?: ParsedRecurrence }[]) {
-  const results = [];
+  const results: Awaited<ReturnType<typeof createReminder>>[] = [];
   for (const item of items) {
     results.push(await createReminder(userId, item));
   }
