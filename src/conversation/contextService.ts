@@ -25,7 +25,9 @@ export async function clearPendingIntent(userId: string) {
   return prisma.conversation.update({ where: { id: existing.id }, data: { pendingIntent: null, pendingParams: null } });
 }
 
-export async function setLastEntityRef(userId: string, ref: { type: "task" | "reminder"; id: string; title: string }) {
+export type EntityRefType = "task" | "reminder" | "payment" | "debt" | "event";
+
+export async function setLastEntityRef(userId: string, ref: { type: EntityRefType; id: string; title: string }) {
   const existing = await prisma.conversation.findFirst({ where: { userId } });
   const data = { lastEntityRef: JSON.stringify(ref) };
   if (existing) {
@@ -34,7 +36,7 @@ export async function setLastEntityRef(userId: string, ref: { type: "task" | "re
   return prisma.conversation.create({ data: { userId, ...data } });
 }
 
-export async function getLastEntityRef(userId: string): Promise<{ type: "task" | "reminder"; id: string; title: string } | null> {
+export async function getLastEntityRef(userId: string): Promise<{ type: EntityRefType; id: string; title: string } | null> {
   const state = await prisma.conversation.findFirst({ where: { userId } });
   if (!state?.lastEntityRef) return null;
   try {
