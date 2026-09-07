@@ -1,0 +1,61 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: line_ai_secretary_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/line_ai_secretary_test?schema=public
+      DEMO_MODE: "true"
+      AI_PROVIDER: mock
+      STT_PROVIDER: mock
+      APP_TIMEZONE: Asia/Bangkok
+      LINE_CHANNEL_ACCESS_TOKEN: dummy
+      LINE_CHANNEL_SECRET: dummy
+      SCHEDULER_SECRET: dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Push schema to test database
+        run: npx prisma db push --accept-data-loss
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
