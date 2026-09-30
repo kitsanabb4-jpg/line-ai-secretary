@@ -15,6 +15,20 @@ export async function updateEvent(userId: string, eventId: string, data: { title
   return prisma.event.update({ where: { id: eventId }, data });
 }
 
+/** ยกเลิก (CANCEL) — เก็บประวัติไว้ (status=CANCELLED, cancelledAt) ต่างจาก deleteEvent ที่ลบถาวรออกจากระบบจริง ๆ */
+export async function cancelEvent(userId: string, eventId: string) {
+  const event = await prisma.event.findFirst({ where: { id: eventId, userId } });
+  if (!event) throw new Error("ไม่พบนัดหมายนี้ หรือไม่ใช่ของคุณ");
+  return prisma.event.update({ where: { id: eventId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+}
+
+export async function completeEvent(userId: string, eventId: string) {
+  const event = await prisma.event.findFirst({ where: { id: eventId, userId } });
+  if (!event) throw new Error("ไม่พบนัดหมายนี้ หรือไม่ใช่ของคุณ");
+  return prisma.event.update({ where: { id: eventId }, data: { status: "COMPLETED", completedAt: new Date() } });
+}
+
+/** DELETE จริง — ลบถาวรออกจากฐานข้อมูล ควรให้ผู้ใช้ยืนยันก่อนเรียกฟังก์ชันนี้เสมอ (ดู pendingIntent CONFIRM_DELETE ใน tools/index.ts) */
 export async function deleteEvent(userId: string, eventId: string) {
   const event = await prisma.event.findFirst({ where: { id: eventId, userId } });
   if (!event) throw new Error("ไม่พบนัดหมายนี้ หรือไม่ใช่ของคุณ");
