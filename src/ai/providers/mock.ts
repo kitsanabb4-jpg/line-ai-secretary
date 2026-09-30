@@ -40,9 +40,18 @@ export class MockAIProvider implements AIProvider {
     else if (/เลื่อน/.test(text)) intent = "RESCHEDULE";
     else if (/แก้เป็น|เปลี่ยนเป็น|แก้ไขเป็น/.test(text)) intent = "UPDATE_TASK";
     else if (/เสร็จแล้ว|ทำเสร็จ/.test(text)) intent = "COMPLETE_TASK";
+    // "ลบ"/"ลบถาวร" = ขอลบถาวร (executeIntent จะถามยืนยันก่อนลบจริงเสมอสำหรับงาน/นัดหมาย — ดู DELETE_TASK ใน tools/index.ts)
+    else if (/ลบ/.test(text)) intent = "DELETE_TASK";
+    // "ยกเลิก" = cancel แบบเก็บประวัติไว้ (ไม่เท่ากับลบถาวร) ทำทันทีไม่ต้องถามยืนยัน
+    else if (/ยกเลิก/.test(text)) intent = "CANCEL_ITEM";
     else if (/ต้องจ่ายอะไรบ้าง|จ่ายอะไรบ้าง|มีหนี้อะไร/.test(text)) intent = "FINANCIAL_SUMMARY";
     else if (/หนี้/.test(text) && /(ยืม|กู้|เป็นหนี้)/.test(text)) intent = "CREATE_DEBT";
     else if (/หนี้/.test(text)) intent = "FINANCIAL_SUMMARY";
+    // รายรับ-รายจ่ายพื้นฐาน (สมุดบันทึกส่วนตัว) ต้องเช็คก่อน CREATE_PAYMENT เสมอ เพราะเป็นอดีต ("จ่ายไปแล้ว")
+    // ต่างจาก CREATE_PAYMENT ที่เป็นบิลอนาคต ("ต้องจ่าย")
+    else if (/สรุปรายรับรายจ่าย|รายรับรายจ่ายเดือนนี้|ดูรายจ่าย|ดูรายรับ/.test(text)) intent = "SHOW_FINANCE_RECORDS";
+    else if (/(ได้เงิน|เงินเดือนออก|รายได้เข้า|ได้รับเงิน)/.test(text)) intent = "ADD_INCOME";
+    else if (/(จ่าย|เสียเงิน|ซื้อ).*ไป.*บาท|จ่ายไปแล้ว/.test(text)) intent = "ADD_EXPENSE";
     else if (/การเงิน|ต้องจ่าย|ค่าใช้จ่าย|บิล/.test(text)) intent = "CREATE_PAYMENT";
     else if (/เตือน/.test(text)) intent = "CREATE_REMINDER";
     else if (isLikelyTask(text)) intent = "CREATE_TASK";
