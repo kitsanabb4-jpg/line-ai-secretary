@@ -3,7 +3,7 @@ export const INTENT_LIST = [
   "CREATE_RECURRING_REMINDER", "CREATE_PAYMENT", "CREATE_DEBT",
   "CREATE_MEDICATION_REMINDER", "UPDATE_TASK", "UPDATE_REMINDER",
   "RESCHEDULE", "SNOOZE", "COMPLETE_TASK", "DELETE_TASK",
-  "LIST_TODAY", "LIST_TOMORROW", "LIST_WEEK", "LIST_PENDING", "LIST_UPCOMING",
+  "LIST_TODAY", "LIST_TOMORROW", "LIST_WEEK", "LIST_MONTH", "LIST_PENDING", "LIST_UPCOMING",
   "SEARCH_MEMORY", "SAVE_MEMORY", "FORGET_MEMORY", "FINANCIAL_SUMMARY",
   "DAILY_SUMMARY", "EVENING_SUMMARY", "GENERAL_CONVERSATION",
 ] as const;
@@ -53,8 +53,9 @@ ${recentContext ? `บริบทการสนทนาล่าสุด: ${
 6. คำอ้างอิงแบบกำกวม เช่น "อันนั้น" "อันนี้" "เรื่องนั้น" "เมื่อกี้" "รายการล่าสุด" "งานนั้น" "เตือนอันเดิม" ให้ตีความว่าหมายถึงรายการที่เพิ่งพูดถึงล่าสุดในบทสนทนาเสมอ (ระบบจะค้นจาก task/reminder/payment/debt/event ล่าสุดให้เอง) อย่าสร้างรายการใหม่ซ้ำ
 7. ไม่ต้องแปลงวันที่/เวลาเป็น absolute เอง แค่ส่ง dateText/timeText เป็นวลีดิบ (รองรับทั้งภาษาพูดและตัวเลข เช่น "15/9/69") ระบบจะแปลงให้เอง
 8. เข้าใจประโยคที่ไม่ได้พูดเป็นคำสั่งตรง ๆ ด้วย เช่น "กลัวลืมจ่ายค่าไฟวันที่ 15" ควรตีความเป็น CREATE_PAYMENT/CREATE_REMINDER ไม่ใช่ GENERAL_CONVERSATION
-9. คำถามเกี่ยวกับข้อมูลจริง (เช่น "เดือนนี้ต้องจ่ายอะไรบ้าง", "งานที่ค้างอยู่มีอะไรบ้าง") ให้ตอบ intent ที่ query ฐานข้อมูลจริงเสมอ (FINANCIAL_SUMMARY/LIST_PENDING ฯลฯ) อย่าแต่งคำตอบเองจากบทสนทนา
+9. คำถามเกี่ยวกับข้อมูลจริง (เช่น "เดือนนี้ต้องจ่ายอะไรบ้าง", "งานที่ค้างอยู่มีอะไรบ้าง", "เดือนนี้มีอะไรบ้าง") ให้ตอบ intent ที่ query ฐานข้อมูลจริงเสมอ (FINANCIAL_SUMMARY/LIST_PENDING/LIST_WEEK/LIST_MONTH ฯลฯ) อย่าแต่งคำตอบเองจากบทสนทนา
 10. ตอบสั้น กระชับ เป็นธรรมชาติแบบเลขาส่วนตัว ไม่ต้องยาวถ้าไม่จำเป็น ใช้อิโมจิพองาม (🐷🐱✅⏰📌💰) หลีกเลี่ยงคำซ้ำ ๆ แบบระบบราชการ
+11. **การบันทึกงาน (CREATE_TASK) ไม่จำเป็นต้องมีคำสั่งชัดเจนอย่าง "สร้าง"/"เพิ่ม" เสมอไป** — ประโยคที่พูดถึงสิ่งที่ต้องทำแบบธรรมชาติ เช่น "พรุ่งนี้ต้องส่งรายงาน", "จดงานประชุมทีมไว้หน่อย", "มีงานส่งเอกสารวันศุกร์" ต้องตีความเป็น CREATE_TASK เสมอ ไม่ใช่ GENERAL_CONVERSATION — ถ้าฟังดูเหมือนเรื่องที่ต้องติดตาม/ทำในอนาคต แต่ไม่ชัดว่าเป็น reminder (ต้องการแจ้งเตือนตามเวลา) หรือ payment (เกี่ยวกับเงิน) ให้ถือว่าเป็น CREATE_TASK ไว้ก่อน ดีกว่าปล่อยผ่านไม่บันทึกอะไรเลย
 
 ตัวอย่างการแยก title ออกจากประโยคเต็ม (สำคัญมาก ต้องทำตามแบบนี้เป๊ะ):
 - ผู้ใช้: "การเงิน ค่าไฟ วันที่ 15/9/69"
