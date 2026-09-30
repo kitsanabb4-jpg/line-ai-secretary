@@ -5,7 +5,7 @@ export const INTENT_LIST = [
   "RESCHEDULE", "SNOOZE", "COMPLETE_TASK", "DELETE_TASK", "CANCEL_ITEM",
   "LIST_TODAY", "LIST_TOMORROW", "LIST_WEEK", "LIST_MONTH", "LIST_PENDING", "LIST_UPCOMING",
   "SEARCH_MEMORY", "SAVE_MEMORY", "FORGET_MEMORY", "FINANCIAL_SUMMARY",
-  "ADD_EXPENSE", "ADD_INCOME", "SHOW_FINANCE_RECORDS",
+  "ADD_EXPENSE", "ADD_INCOME", "SHOW_FINANCE_RECORDS", "OPEN_PLANNER",
   "DAILY_SUMMARY", "EVENING_SUMMARY", "GENERAL_CONVERSATION",
 ] as const;
 
@@ -59,6 +59,7 @@ ${recentContext ? `บริบทการสนทนาล่าสุด: ${
 11. **การบันทึกงาน (CREATE_TASK) ไม่จำเป็นต้องมีคำสั่งชัดเจนอย่าง "สร้าง"/"เพิ่ม" เสมอไป** — ประโยคที่พูดถึงสิ่งที่ต้องทำแบบธรรมชาติ เช่น "พรุ่งนี้ต้องส่งรายงาน", "จดงานประชุมทีมไว้หน่อย", "มีงานส่งเอกสารวันศุกร์" ต้องตีความเป็น CREATE_TASK เสมอ ไม่ใช่ GENERAL_CONVERSATION — ถ้าฟังดูเหมือนเรื่องที่ต้องติดตาม/ทำในอนาคต แต่ไม่ชัดว่าเป็น reminder (ต้องการแจ้งเตือนตามเวลา) หรือ payment (เกี่ยวกับเงิน) ให้ถือว่าเป็น CREATE_TASK ไว้ก่อน ดีกว่าปล่อยผ่านไม่บันทึกอะไรเลย
 12. **"ยกเลิก" (CANCEL_ITEM) กับ "ลบ" (DELETE_TASK) ไม่เหมือนกัน** — "ยกเลิก" คือยกเลิกแต่ยังเก็บประวัติไว้ในระบบ (เช่น "ยกเลิกนัดหมอพรุ่งนี้") ส่วน "ลบ"/"ลบถาวร" คือเอาออกจากระบบถาวรกู้คืนไม่ได้ (เช่น "ลบงานนี้ทิ้ง") ระบบจะถามยืนยันก่อนลบถาวรเองเสมอสำหรับงาน/นัดหมาย ไม่ต้องถามซ้ำใน reply
 13. รายรับ-รายจ่ายพื้นฐาน (ไม่ใช่บิล/หนี้): "จ่ายค่ากาแฟไป 60 บาท", "ได้เงินเดือนมา 20000" -> ADD_EXPENSE/ADD_INCOME (แยกจาก CREATE_PAYMENT ที่เป็นบิลที่ต้องจ่ายในอนาคต) ส่วน "สรุปรายรับรายจ่ายเดือนนี้" -> SHOW_FINANCE_RECORDS
+14. ถ้าผู้ใช้พูดถึง "แพลนเนอร์"/"planner"/"เปิดตาราง"/"ดูตาราง"/"เปิดปฏิทิน"/"เปิดหน้าเว็บ"/"dashboard" (ต้องการเปิดหน้าเว็บ Planner Dashboard) ให้ใช้ intent=OPEN_PLANNER เสมอ ระบบจะส่งลิงก์จริงให้เอง ไม่ต้องแต่งลิงก์เอง
 
 ตัวอย่างการแยก title ออกจากประโยคเต็ม (สำคัญมาก ต้องทำตามแบบนี้เป๊ะ):
 - ผู้ใช้: "การเงิน ค่าไฟ วันที่ 15/9/69"
