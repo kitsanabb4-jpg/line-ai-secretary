@@ -20,7 +20,8 @@ export function mainMenuQuickReply() {
   return {
     items: [
       { type: "action", action: { type: "message", label: "🏠 วันนี้", text: "วันนี้ฉันมีอะไร" } },
-      { type: "action", action: { type: "message", label: "📅 ตาราง", text: "สัปดาห์นี้ฉันมีอะไร" } },
+      { type: "action", action: { type: "message", label: "📅 สัปดาห์นี้", text: "สัปดาห์นี้ฉันมีอะไร" } },
+      { type: "action", action: { type: "message", label: "🗓️ เดือนนี้", text: "เดือนนี้ฉันมีอะไรบ้าง" } },
       { type: "action", action: { type: "message", label: "✅ งาน", text: "งานที่ค้างอยู่มีอะไรบ้าง" } },
       { type: "action", action: { type: "message", label: "💰 การเงิน", text: "เดือนนี้ต้องจ่ายอะไรบ้าง" } },
       { type: "action", action: { type: "message", label: "🧠 ความจำ", text: "ค้นความจำ" } },
