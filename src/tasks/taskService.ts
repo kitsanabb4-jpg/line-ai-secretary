@@ -21,13 +21,21 @@ export async function updateTask(userId: string, taskId: string, data: { title?:
 export async function completeTask(userId: string, taskId: string) {
   const task = await prisma.task.findFirst({ where: { id: taskId, userId } });
   if (!task) throw new Error("ไม่พบ task นี้ หรือไม่ใช่ของคุณ");
-  return prisma.task.update({ where: { id: taskId }, data: { status: "COMPLETED" } });
+  return prisma.task.update({ where: { id: taskId }, data: { status: "COMPLETED", completedAt: new Date() } });
 }
 
+/** ยกเลิก (CANCEL) — เก็บประวัติไว้ ต่างจาก deleteTask ที่ลบถาวรออกจากระบบจริง ๆ */
+export async function cancelTask(userId: string, taskId: string) {
+  const task = await prisma.task.findFirst({ where: { id: taskId, userId } });
+  if (!task) throw new Error("ไม่พบ task นี้ หรือไม่ใช่ของคุณ");
+  return prisma.task.update({ where: { id: taskId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+}
+
+/** DELETE จริง — ลบถาวรออกจากฐานข้อมูล ควรให้ผู้ใช้ยืนยันก่อนเรียกฟังก์ชันนี้เสมอ (ดู pendingIntent CONFIRM_DELETE) */
 export async function deleteTask(userId: string, taskId: string) {
   const task = await prisma.task.findFirst({ where: { id: taskId, userId } });
   if (!task) throw new Error("ไม่พบ task นี้ หรือไม่ใช่ของคุณ");
-  return prisma.task.update({ where: { id: taskId }, data: { status: "CANCELLED" } });
+  return prisma.task.delete({ where: { id: taskId } });
 }
 
 /** หา task ล่าสุดของ user (ใช้ตอนต้องอ้างอิงแบบ "อันนั้น"/"งานที่เพิ่งพูดถึง") */
@@ -44,7 +52,7 @@ export async function listToday(userId: string) {
   const [tasks, reminders, events] = await Promise.all([
     prisma.task.findMany({ where: { userId, dueDate: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { dueDate: "asc" } }),
     prisma.reminder.findMany({ where: { userId, reminderTime: { gte: start, lte: end }, status: { in: ["PENDING", "SNOOZED"] } }, orderBy: { reminderTime: "asc" } }),
-    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end } }, orderBy: { startTime: "asc" } }),
+    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { startTime: "asc" } }),
   ]);
   return { tasks, reminders, events };
 }
@@ -55,7 +63,7 @@ export async function listTomorrow(userId: string) {
   const [tasks, reminders, events] = await Promise.all([
     prisma.task.findMany({ where: { userId, dueDate: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { dueDate: "asc" } }),
     prisma.reminder.findMany({ where: { userId, reminderTime: { gte: start, lte: end }, status: { in: ["PENDING", "SNOOZED"] } }, orderBy: { reminderTime: "asc" } }),
-    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end } }, orderBy: { startTime: "asc" } }),
+    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { startTime: "asc" } }),
   ]);
   return { tasks, reminders, events };
 }
@@ -72,7 +80,7 @@ export async function listWeek(userId: string) {
   const [tasks, reminders, events, undatedTasks] = await Promise.all([
     prisma.task.findMany({ where: { userId, dueDate: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { dueDate: "asc" } }),
     prisma.reminder.findMany({ where: { userId, reminderTime: { gte: start, lte: end }, status: { in: ["PENDING", "SNOOZED"] } }, orderBy: { reminderTime: "asc" } }),
-    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end } }, orderBy: { startTime: "asc" } }),
+    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { startTime: "asc" } }),
     listUndatedOpenTasks(userId),
   ]);
   return { tasks, reminders, events, undatedTasks };
@@ -84,7 +92,7 @@ export async function listMonth(userId: string) {
   const [tasks, reminders, events, undatedTasks] = await Promise.all([
     prisma.task.findMany({ where: { userId, dueDate: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { dueDate: "asc" } }),
     prisma.reminder.findMany({ where: { userId, reminderTime: { gte: start, lte: end }, status: { in: ["PENDING", "SNOOZED"] } }, orderBy: { reminderTime: "asc" } }),
-    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end } }, orderBy: { startTime: "asc" } }),
+    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { startTime: "asc" } }),
     listUndatedOpenTasks(userId),
   ]);
   return { tasks, reminders, events, undatedTasks };
