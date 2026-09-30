@@ -60,15 +60,34 @@ export async function listTomorrow(userId: string) {
   return { tasks, reminders, events };
 }
 
+/** งานที่ยังไม่ปิดและยังไม่ได้กำหนดวันครบกำหนด — ใช้แนบท้ายมุมมองสัปดาห์/เดือน กันไม่ให้งานที่บันทึกไว้ "หายไป"
+ * เพียงเพราะยังไม่รู้วันแน่นอน (เดิมงานแบบนี้จะไม่โผล่ในมุมมองตารางเลย เห็นได้แค่ตอนถาม "งานค้าง" เท่านั้น) */
+async function listUndatedOpenTasks(userId: string) {
+  return prisma.task.findMany({ where: { userId, dueDate: null, status: { in: ["PENDING", "IN_PROGRESS"] } }, orderBy: { createdAt: "asc" } });
+}
+
 export async function listWeek(userId: string) {
   const start = nowInTz().startOf("day").toDate();
   const end = nowInTz().add(7, "day").endOf("day").toDate();
-  const [tasks, reminders, events] = await Promise.all([
+  const [tasks, reminders, events, undatedTasks] = await Promise.all([
     prisma.task.findMany({ where: { userId, dueDate: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { dueDate: "asc" } }),
     prisma.reminder.findMany({ where: { userId, reminderTime: { gte: start, lte: end }, status: { in: ["PENDING", "SNOOZED"] } }, orderBy: { reminderTime: "asc" } }),
     prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end } }, orderBy: { startTime: "asc" } }),
+    listUndatedOpenTasks(userId),
   ]);
-  return { tasks, reminders, events };
+  return { tasks, reminders, events, undatedTasks };
+}
+
+export async function listMonth(userId: string) {
+  const start = nowInTz().startOf("day").toDate();
+  const end = nowInTz().endOf("month").toDate();
+  const [tasks, reminders, events, undatedTasks] = await Promise.all([
+    prisma.task.findMany({ where: { userId, dueDate: { gte: start, lte: end }, status: { not: "CANCELLED" } }, orderBy: { dueDate: "asc" } }),
+    prisma.reminder.findMany({ where: { userId, reminderTime: { gte: start, lte: end }, status: { in: ["PENDING", "SNOOZED"] } }, orderBy: { reminderTime: "asc" } }),
+    prisma.event.findMany({ where: { userId, startTime: { gte: start, lte: end } }, orderBy: { startTime: "asc" } }),
+    listUndatedOpenTasks(userId),
+  ]);
+  return { tasks, reminders, events, undatedTasks };
 }
 
 export async function listPending(userId: string) {
