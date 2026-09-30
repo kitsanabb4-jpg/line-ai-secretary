@@ -4,6 +4,8 @@ import { webhookRouter } from "./api/webhook";
 import { schedulerRouter } from "./api/scheduler";
 import { healthRouter } from "./api/health";
 import { testChatRouter } from "./api/testChat";
+import { plannerApiRouter } from "./api/planner";
+import { plannerPageRouter } from "./api/plannerPage";
 import { logger } from "./utils/logger";
 
 const app = express();
@@ -20,6 +22,9 @@ app.use(
 app.use("/api", webhookRouter);
 app.use("/api", schedulerRouter);
 app.use("/api", healthRouter);
+// Planner Dashboard: REST API (/api/planner/:userId/...) + หน้าเว็บ (/planner/:userId) — ดู STEP6/STEP9 ในรายงานที่ส่งให้ผู้ใช้
+app.use("/api", plannerApiRouter);
+app.use(plannerPageRouter);
 // เปิด /api/test-chat เฉพาะตอน DEMO_MODE=true เท่านั้น (คุยกับ AI ผ่าน HTTP ตรง ๆ ไม่ต้องผ่าน LINE)
 // ป้องกันไม่ให้ endpoint ทดสอบนี้เปิดเป็น public บน production โดยไม่ตั้งใจ
 if (env.DEMO_MODE) {
