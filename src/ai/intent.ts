@@ -53,7 +53,12 @@ export async function handleUserMessage(userId: string, text: string): Promise<s
 
   // ถ้ามี pending intent ค้างอยู่ ให้ merge ข้อมูลเก่ากับใหม่ (กันไม่ให้ถามซ้ำ)
   if (pendingIntent) {
-    intent = intent === "GENERAL_CONVERSATION" ? pendingIntent : intent;
+    // กรณีพิเศษ: กำลังรอ "ยืนยันการลบถาวร" ค้างอยู่ (ดู DELETE_TASK ใน tools/index.ts) — ต้องบังคับให้ข้อความ
+    // ตอบกลับใด ๆ ของผู้ใช้ถูกตีความเป็นการตอบคำถามยืนยันนี้เสมอ ไม่ปล่อยให้ตกไปเป็น intent อื่นโดยไม่ตั้งใจ
+    // (เช่น ถ้าผู้ใช้พิมพ์ "ยกเลิกการลบ" คำว่า "ยกเลิก" เพียงคำเดียวจะถูกจัดเป็น CANCEL_ITENT ไปเฉย ๆ
+    // ทั้งที่จริงควรตีความเป็นคำตอบ "ไม่ยืนยัน" ของคำถามที่ถามไปก่อนหน้า)
+    const isConfirmDeleteFlow = pendingIntent === "DELETE_TASK" && !!(pendingParams as any).confirmTargetId;
+    intent = isConfirmDeleteFlow ? pendingIntent : intent === "GENERAL_CONVERSATION" ? pendingIntent : intent;
     params = { ...pendingParams, ...aiResult.params, rawText: text };
   }
 
