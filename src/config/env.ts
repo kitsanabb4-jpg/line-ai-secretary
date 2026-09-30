@@ -38,4 +38,7 @@ export const env = {
   DEFAULT_EVENING_SUMMARY_ENABLED: bool(process.env.DEFAULT_EVENING_SUMMARY_ENABLED, false),
 
   LOG_LEVEL: process.env.LOG_LEVEL || "info",
+
+  // URL สาธารณะของ service นี้เอง (เช่น https://xxxx.onrender.com) — ใช้สร้างลิงก์ Planner ที่ส่งให้ผู้ใช้ทาง LINE
+  PUBLIC_BASE_URL: (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, ""),
 };
