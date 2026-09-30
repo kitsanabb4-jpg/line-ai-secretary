@@ -7,6 +7,7 @@ import * as memoryService from "../memory/memoryService";
 import * as financeService from "../finance/financeService";
 import * as convo from "../conversation/contextService";
 import { MemoryType } from "../memory/memoryService";
+import { env } from "../config/env";
 
 export interface ToolResult {
   reply: string;
@@ -140,6 +141,16 @@ export async function executeIntent(userId: string, intent: string, params: Inte
   const ref = nowInTz();
 
   switch (intent) {
+    // ทางเข้า Planner Dashboard แบบพิมพ์คำสั่งตรง ๆ — ใช้ได้เสมอไม่ว่าปุ่ม quick-reply จะโชว์ในเครื่องผู้ใช้หรือไม่
+    // (ส่งเป็นลิงก์ในข้อความ ซึ่ง LINE จะทำให้กดเปิดได้อัตโนมัติ ไม่ต้องพึ่งพา action ปุ่มแยกต่างหาก)
+    case "OPEN_PLANNER": {
+      if (!env.PUBLIC_BASE_URL) {
+        return { reply: "ตอนนี้ยังไม่ได้ตั้งค่าลิงก์ Planner ไว้เลยค่ะ (ต้องตั้งค่า PUBLIC_BASE_URL ในระบบก่อน) รบกวนแจ้งแอดมินให้ตั้งค่าก่อนนะคะ 🙏" };
+      }
+      const url = `${env.PUBLIC_BASE_URL}/planner/${userId}`;
+      return { reply: `เปิดแพลนเนอร์ของคุณได้ที่นี่เลยค่ะ 🖥️📅\n${url}` };
+    }
+
     case "CREATE_TASK": {
       let dueDate: Date | undefined;
       let taskParsed: ReturnType<typeof parseThaiDateTime> = null;
