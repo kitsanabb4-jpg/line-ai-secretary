@@ -29,7 +29,11 @@ export class MockAIProvider implements AIProvider {
 
     let intent = "GENERAL_CONVERSATION";
 
-    if (/(วันนี้).*(มีอะไร|นัด|งาน)/.test(text) || text.includes("สรุปวันนี้")) intent = "LIST_TODAY";
+    // เปิด Planner Dashboard — เช็คก่อนเงื่อนไขอื่น ๆ เพราะผู้ใช้อาจพิมพ์ "เปิด Planner" ตรง ๆ
+    // (ปุ่ม quick-reply ก็ลิงก์ไปหน้านี้เหมือนกัน แต่บางอุปกรณ์/บาง LINE client อาจไม่แสดงปุ่ม
+    // จึงต้องมีทางเข้าแบบพิมพ์คำสั่งตรง ๆ ด้วยเสมอ เป็น fallback ที่ทำงานได้ 100% ไม่พึ่งพา UI ของ LINE)
+    if (/แพลนเนอร์|planner|เปิดตาราง|ดูตาราง|เปิดปฏิทิน|เปิดหน้าเว็บ|dashboard/i.test(text)) intent = "OPEN_PLANNER";
+    else if (/(วันนี้).*(มีอะไร|นัด|งาน)/.test(text) || text.includes("สรุปวันนี้")) intent = "LIST_TODAY";
     else if (/(พรุ่งนี้).*(มีอะไร)/.test(text)) intent = "LIST_TOMORROW";
     else if (/(สัปดาห์นี้|อาทิตย์นี้).*(มีอะไร|สรุป)|สรุปสัปดาห์/.test(text)) intent = "LIST_WEEK";
     else if (/(เดือนนี้|เดือนหน้า).*(มีอะไร|สรุป)|สรุปเดือน|ตารางเดือน/.test(text)) intent = "LIST_MONTH";
