@@ -103,3 +103,39 @@ export async function getFinancialSummary(userId: string) {
 
   return { paymentsThisMonth, paymentsThisWeek, debts, totalThisMonth, totalThisWeek, totalDebtRemaining, upcomingDebt };
 }
+
+/**
+ * บันทึกรายรับ-รายจ่ายแบบพื้นฐาน (ไม่ใช่ระบบบัญชี) — แยกจาก Payment/Debt ที่ใช้ติดตามบิล/หนี้
+ * type: "INCOME" | "EXPENSE"
+ */
+export async function createFinanceRecord(
+  userId: string,
+  data: { type: "INCOME" | "EXPENSE"; amount: number; category?: string; description?: string; date?: Date }
+) {
+  return prisma.financeRecord.create({
+    data: { userId, type: data.type, amount: data.amount, category: data.category, description: data.description, date: data.date ?? new Date() },
+  });
+}
+
+export async function listFinanceRecords(userId: string, opts: { from?: Date; to?: Date } = {}) {
+  return prisma.financeRecord.findMany({
+    where: { userId, ...(opts.from || opts.to ? { date: { gte: opts.from, lte: opts.to } } : {}) },
+    orderBy: { date: "desc" },
+  });
+}
+
+export async function deleteFinanceRecord(userId: string, id: string) {
+  const rec = await prisma.financeRecord.findFirst({ where: { id, userId } });
+  if (!rec) throw new Error("ไม่พบรายการนี้ หรือไม่ใช่ของคุณ");
+  return prisma.financeRecord.delete({ where: { id } });
+}
+
+/** สรุปรายรับ-รายจ่ายของเดือนนี้: ยอดรวมรับ, จ่าย, คงเหลือ */
+export async function getFinanceRecordSummary(userId: string) {
+  const start = nowInTz().startOf("month").toDate();
+  const end = nowInTz().endOf("month").toDate();
+  const records = await prisma.financeRecord.findMany({ where: { userId, date: { gte: start, lte: end } }, orderBy: { date: "desc" } });
+  const totalIncome = records.filter((r) => r.type === "INCOME").reduce((sum, r) => sum + r.amount, 0);
+  const totalExpense = records.filter((r) => r.type === "EXPENSE").reduce((sum, r) => sum + r.amount, 0);
+  return { records, totalIncome, totalExpense, balance: totalIncome - totalExpense };
+}
