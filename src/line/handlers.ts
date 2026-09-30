@@ -53,7 +53,7 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
   logger.userMessage(userId, "IN", text);
   const reply = await handleUserMessage(userId, text);
   logger.userMessage(userId, "OUT", reply);
-  await replyMessage(replyToken, [{ ...textMessage(reply), quickReply: mainMenuQuickReply() } as any]);
+  await replyMessage(replyToken, [{ ...textMessage(reply), quickReply: mainMenuQuickReply(userId) } as any]);
 }
 
 /**
