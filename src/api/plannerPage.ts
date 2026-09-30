@@ -50,6 +50,18 @@ function renderPlannerHtml(userId: string, displayName: string): string {
   .section-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
   .balance { font-size: 18px; font-weight: 700; color: var(--pink-dark); }
   .muted { color: var(--muted); font-size: 12px; }
+  .cal-title { text-align: center; font-weight: 700; color: var(--pink-dark); margin-bottom: 10px; font-size: 16px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-head { margin-bottom: 4px; }
+  .cal-dow { text-align: center; font-size: 11px; color: var(--muted); font-weight: 600; padding: 4px 0; }
+  .cal-cell { min-height: 64px; border-radius: 8px; background: #fffafb; border: 1px solid #f5e3e8; padding: 4px; cursor: pointer; overflow: hidden; }
+  .cal-cell:active { background: #fdeef2; }
+  .cal-cell.cal-empty { background: transparent; border: none; cursor: default; }
+  .cal-cell.cal-today { border: 2px solid var(--pink-dark); }
+  .cal-cell.cal-selected { background: #ffe1ea; }
+  .cal-daynum { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .cal-item { font-size: 10px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .cal-more { font-size: 10px; color: var(--pink-dark); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -61,6 +73,7 @@ function renderPlannerHtml(userId: string, displayName: string): string {
   <div class="tab active" data-tab="today">วันนี้</div>
   <div class="tab" data-tab="week">สัปดาห์นี้</div>
   <div class="tab" data-tab="month">เดือนนี้</div>
+  <div class="tab" data-tab="calendar">📅 ปฏิทิน</div>
   <div class="tab" data-tab="finance">การเงิน</div>
 </div>
 <main id="app"></main>
@@ -133,6 +146,80 @@ function renderList(items, undatedTasks) {
   return html;
 }
 
+function dateKey(d) {
+  const x = new Date(d);
+  return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0");
+}
+
+function truncate(s, n) {
+  s = String(s);
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+let calItemsByDate = {};
+
+/**
+ * ปฏิทินแบบตาราง (grid) ของเดือนปัจจุบัน — ต่างจาก renderList ตรงที่นี่เป็นตารางเห็นทั้งเดือนในหน้าเดียว
+ * แต่ละช่องวันจะโชว์ข้อความสั้น ๆ ของรายการวันนั้นให้เห็นตรง ๆ (ไม่ต้องกดเข้าไปดูก่อน) ถ้ามีเยอะจะโชว์
+ * "+N เพิ่มเติม" แล้วกดที่ช่องวันเพื่อดูรายละเอียดเต็ม ๆ (พร้อมปุ่มจัดการ) ในการ์ดด้านล่างตาราง
+ */
+function renderCalendar(items) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startWeekday = firstDay.getDay();
+  const todayKey = dateKey(now);
+
+  calItemsByDate = {};
+  for (const it of items) {
+    const key = dateKey(it.date);
+    (calItemsByDate[key] = calItemsByDate[key] || []).push(it);
+  }
+
+  const monthLabel = firstDay.toLocaleDateString("th-TH", { month: "long", year: "numeric" });
+  const dowLabels = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+
+  let html = '<div class="card"><div class="cal-title">' + monthLabel + "</div>";
+  html += '<div class="cal-grid cal-head">' + dowLabels.map((d) => '<div class="cal-dow">' + d + "</div>").join("") + "</div>";
+  html += '<div class="cal-grid">';
+  for (let i = 0; i < startWeekday; i++) html += '<div class="cal-cell cal-empty"></div>';
+  for (let day = 1; day <= daysInMonth; day++) {
+    const key = year + "-" + String(month + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+    const dayItems = calItemsByDate[key] || [];
+    const cls = "cal-cell" + (key === todayKey ? " cal-today" : "");
+    html += '<div class="' + cls + '" id="cal-' + key + '" onclick="showDayDetail(\'' + key + "')\">";
+    html += '<div class="cal-daynum">' + day + "</div>";
+    const shown = dayItems.slice(0, 2);
+    html += shown
+      .map((it) => '<div class="cal-item">' + (it.kind === "task" ? "📌" : it.kind === "event" ? "📅" : "⏰") + " " + escapeHtml(truncate(it.title, 8)) + "</div>")
+      .join("");
+    if (dayItems.length > 2) html += '<div class="cal-more">+' + (dayItems.length - 2) + " เพิ่มเติม</div>";
+    html += "</div>";
+  }
+  html += "</div></div>";
+  html += '<div id="dayDetail"></div>';
+  return html;
+}
+
+/** กดที่ช่องวันในปฏิทิน -> โชว์รายละเอียดเต็ม ๆ ของวันนั้น (พร้อมปุ่มจัดการเหมือนมุมมองอื่น ๆ) ในการ์ดด้านล่างตาราง */
+function showDayDetail(key) {
+  document.querySelectorAll(".cal-cell").forEach((c) => c.classList.remove("cal-selected"));
+  const cell = document.getElementById("cal-" + key);
+  if (cell) cell.classList.add("cal-selected");
+
+  const items = calItemsByDate[key] || [];
+  const label = new Date(key + "T00:00:00").toLocaleDateString("th-TH", { weekday: "long", day: "2-digit", month: "long" });
+  const el = document.getElementById("dayDetail");
+  if (!el) return;
+  if (items.length === 0) {
+    el.innerHTML = '<div class="card"><div class="day-header">' + label + '</div><div class="empty">ไม่มีอะไรในวันนี้เลยค่ะ 🐷</div></div>';
+    return;
+  }
+  el.innerHTML = '<div class="card"><div class="day-header">' + label + "</div>" + items.map(itemRow).join("") + "</div>";
+}
+
 function quickAddForm() {
   return \`
   <div class="card">
@@ -157,6 +244,14 @@ async function loadView(tab) {
   const app = document.getElementById("app");
   app.innerHTML = '<div class="card">กำลังโหลด...</div>';
   try {
+    if (tab === "calendar") {
+      // ปฏิทินแบบตาราง (เดือนปัจจุบัน) — โชว์ข้อความสั้น ๆ ของแต่ละวันตรง ๆ ในช่องปฏิทินเลย
+      // ไม่ต้องกดเข้าไปดูทีละวันก็เห็นคร่าว ๆ ว่าวันนั้นมีอะไรบ้าง กดที่ช่องวันเพื่อดูรายละเอียดเต็ม ๆ ด้านล่าง
+      const data = await api("/month");
+      const items = flatten(data);
+      app.innerHTML = renderCalendar(items);
+      return;
+    }
     if (tab === "finance") {
       const summary = await api("/finance");
       let html = '<div class="card">';
