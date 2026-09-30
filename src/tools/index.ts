@@ -25,6 +25,11 @@ interface IntentParams {
   notes?: string;
   rawText?: string;
   paymentId?: string; // ใช้ภายในตอน slot-filling ยอดเงินของ payment ที่สร้างไว้ก่อนแล้ว (ดู FILL_PAYMENT_AMOUNT)
+  category?: string; // ใช้กับ ADD_EXPENSE/ADD_INCOME
+  // ใช้ภายในตอนรอผู้ใช้ยืนยันการลบถาวร (ดู DELETE_TASK confirm flow + intent.ts isConfirmDeleteFlow)
+  confirmTargetType?: string;
+  confirmTargetId?: string;
+  confirmTargetTitle?: string;
 }
 
 /** ดึงตัวเลขจำนวนเงินตัวแรกจากข้อความดิบ ใช้เป็น fallback เวลา AI provider ไม่ได้ parse params.amount มาให้ (กันพังกรณี provider โง่/mock) */
@@ -281,6 +286,34 @@ export async function executeIntent(userId: string, intent: string, params: Inte
       return { reply: `บันทึกหนี้แล้วค่ะ 💰 "${creditor}" ${amount.toLocaleString()} บาท` };
     }
 
+    case "ADD_EXPENSE":
+    case "ADD_INCOME": {
+      // สมุดบันทึกรายรับ-รายจ่ายพื้นฐาน (ไม่ใช่บัญชีบิล/หนี้) — แยกจาก CREATE_PAYMENT/CREATE_DEBT โดยตั้งใจ
+      const amount = typeof params.amount === "number" ? params.amount : extractAmountFromText(params.rawText);
+      if (amount == null) {
+        await convo.setPendingIntent(userId, intent, { title: params.title, category: params.title });
+        return { reply: "ยอดเท่าไหร่ดีคะ 💰" };
+      }
+      const type = intent === "ADD_INCOME" ? "INCOME" : "EXPENSE";
+      const category = params.title || deriveCleanTitle(params.rawText || "") || undefined;
+      const record = await financeService.createFinanceRecord(userId, { type, amount, category, description: params.rawText });
+      await convo.clearPendingIntent(userId);
+      const verb = type === "INCOME" ? "รายรับ" : "รายจ่าย";
+      return { reply: `บันทึก${verb} ${amount.toLocaleString()} บาท${category ? ` (${category})` : ""} ไว้แล้วค่ะ 💰` };
+    }
+
+    case "SHOW_FINANCE_RECORDS": {
+      const summary = await financeService.getFinanceRecordSummary(userId);
+      if (summary.records.length === 0) return { reply: "เดือนนี้ยังไม่มีรายการรายรับ-รายจ่ายเลยค่ะ 💰" };
+      const lines = summary.records
+        .slice(0, 15)
+        .map((r) => `${r.type === "INCOME" ? "🟢+" : "🔴-"}${r.amount.toLocaleString()} บาท${r.category ? ` (${r.category})` : ""}`)
+        .join("\n");
+      return {
+        reply: `สรุปรายรับ-รายจ่ายเดือนนี้ค่ะ 💰\n${lines}\n\nรวมรายรับ ${summary.totalIncome.toLocaleString()} บาท\nรวมรายจ่าย ${summary.totalExpense.toLocaleString()} บาท\nคงเหลือ ${summary.balance.toLocaleString()} บาท`,
+      };
+    }
+
     case "CREATE_MEDICATION_REMINDER": {
       const title = params.title || "ทานยา";
       const combined = `${params.timeText || ""}`.trim();
@@ -305,14 +338,45 @@ export async function executeIntent(userId: string, intent: string, params: Inte
     }
 
     case "DELETE_TASK": {
+      // ขั้นที่ 2: กำลังตอบคำถามยืนยันการลบถาวรที่ถามไปก่อนหน้า (ดู intent.ts isConfirmDeleteFlow)
+      if (params.confirmTargetId && params.confirmTargetType) {
+        await convo.clearPendingIntent(userId);
+        const confirmed = /ยืนยัน|^ใช่$|ลบเลย|ตกลง|โอเค|^ok$/i.test((params.rawText || "").trim());
+        const title = String(params.confirmTargetTitle || "");
+        if (!confirmed) return { reply: `ไม่ลบ "${title}" แล้วนะคะ ยังอยู่เหมือนเดิมค่ะ 🙏` };
+        const type = String(params.confirmTargetType);
+        const id = String(params.confirmTargetId);
+        if (type === "task") await taskService.deleteTask(userId, id);
+        else if (type === "event") await eventService.deleteEvent(userId, id);
+        return { reply: `ลบ "${title}" ถาวรแล้วค่ะ 🗑️ (กู้คืนไม่ได้แล้วนะคะ)` };
+      }
+
       const target = await resolveTargetEntity(userId, params.targetRef);
       if (!target) return { reply: "ไม่แน่ใจว่าหมายถึงรายการไหนค่ะ" };
+      // งาน/นัดหมาย มีผลกระทบเยอะกว่า (มี reminder ผูกอยู่ได้) และกู้คืนไม่ได้ถ้าลบผิด -> ต้องถามยืนยันก่อนเสมอ
+      if (target.type === "task" || target.type === "event") {
+        await convo.setPendingIntent(userId, "DELETE_TASK", {
+          confirmTargetType: target.type,
+          confirmTargetId: target.id,
+          confirmTargetTitle: target.title,
+        });
+        return { reply: `ต้องการลบ "${target.title}" แบบถาวรใช่ไหมคะ? ข้อมูลจะหายไปกู้คืนไม่ได้เลยนะคะ พิมพ์ "ยืนยัน" เพื่อลบ หรือพิมพ์อย่างอื่นเพื่อไม่ลบค่ะ 🙏` };
+      }
       if (target.type === "reminder") await reminderService.cancelReminder(userId, target.id);
-      else if (target.type === "task") await taskService.deleteTask(userId, target.id);
       else if (target.type === "payment") await financeService.deletePayment(userId, target.id);
       else if (target.type === "debt") await financeService.deleteDebt(userId, target.id);
-      else await eventService.deleteEvent(userId, target.id);
       return { reply: `ลบ "${target.title}" ให้แล้วค่ะ 🗑️` };
+    }
+
+    case "CANCEL_ITEM": {
+      // ยกเลิก (CANCEL) ต่างจากลบถาวร (DELETE) — เก็บประวัติไว้ในระบบ (status=CANCELLED) ทำทันทีไม่ต้องถามยืนยัน
+      const target = await resolveTargetEntity(userId, params.targetRef);
+      if (!target) return { reply: "ไม่แน่ใจว่าหมายถึงรายการไหนค่ะ" };
+      if (target.type === "task") await taskService.cancelTask(userId, target.id);
+      else if (target.type === "event") await eventService.cancelEvent(userId, target.id);
+      else if (target.type === "reminder") await reminderService.cancelReminder(userId, target.id);
+      else return { reply: `"${target.title}" ยกเลิกแบบนี้ไม่ได้ค่ะ ถ้าจะลบให้พิมพ์ "ลบ" แทนนะคะ` };
+      return { reply: `ยกเลิก "${target.title}" ให้แล้วค่ะ ✅ (ยังเก็บประวัติไว้อยู่นะคะ)` };
     }
 
     case "RESCHEDULE": {
