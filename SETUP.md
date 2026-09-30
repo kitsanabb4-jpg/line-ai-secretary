@@ -17,6 +17,7 @@
 9. [ทดสอบ Voice Message](#9-ทดสอบ-voice-message)
 10. [ทดสอบ Reminder](#10-ทดสอบ-reminder)
 11. [Troubleshooting](#11-troubleshooting)
+12. [Planner Dashboard (หน้าเว็บ)](#12-planner-dashboard-หน้าเว็บ)
 
 ---
 
@@ -91,6 +92,7 @@ npm run dev
 | `OPENAI_API_KEY` | API key จาก OpenAI (มีค่าใช้จ่าย) | เฉพาะถ้าอยากใช้ OpenAI |
 | `STT_PROVIDER` | `groq_whisper` \| `openai_whisper` \| `mock` | ตั้งเป็น `groq_whisper` แนะนำ (ฟรี) |
 | `SCHEDULER_SECRET` | รหัสลับป้องกัน endpoint scheduler | สร้างค่าสุ่มยาว ๆ เอง เช่นจาก https://www.uuidgenerator.net |
+| `PUBLIC_BASE_URL` | URL สาธารณะของ service นี้เอง เช่น `https://line-ai-secretary.onrender.com` (ไม่ต้องมี `/` ปิดท้าย) | ใส่หลัง deploy เสร็จ เพื่อให้ปุ่ม "🖥️ เปิด Planner" ใน LINE ส่งลิงก์ที่ถูกต้อง (ดูหัวข้อ 12) |
 
 **วิธีขอ Gemini API Key (ฟรี):**
 1. เข้า https://aistudio.google.com/app/apikey
@@ -235,3 +237,16 @@ curl -X POST http://localhost:3000/api/webhook \
 | ข้อมูลหายหลัง deploy ใหม่ | ยังใช้ SQLite บน production (ephemeral disk) | เปลี่ยนไปใช้ Postgres ตามหัวข้อ 5 |
 | `npm run prisma:migrate` error "Environment variable not found: DATABASE_URL" | ยังไม่ได้สร้างไฟล์ `.env` | รัน `cp .env.example .env` ก่อน |
 | Render service ตอบช้ามาก (ครั้งแรกหลัง idle) | Render free tier sleep หลัง 15 นาทีไม่มีคนเรียก | ตั้ง cron-job.org ยิงทุก 1 นาที จะช่วยไม่ให้ sleep |
+
+---
+
+## 12. Planner Dashboard (หน้าเว็บ)
+
+นอกจากคุยผ่าน LINE แล้ว ระบบมีหน้าเว็บ Planner ง่าย ๆ ให้ดู/แก้ไขงาน นัดหมาย และรายรับ-รายจ่ายได้โดยตรง
+ไม่ต้อง build แยก เป็นหน้าเว็บที่ served มาจาก server เดียวกันนี้เลย
+
+- ตั้งค่า `PUBLIC_BASE_URL` ให้เป็น URL ของ service (เช่น `https://line-ai-secretary.onrender.com`) แล้ว deploy ใหม่
+- หลังจากนั้นทุกครั้งที่บอทตอบข้อความใน LINE จะมีปุ่ม **"🖥️ เปิด Planner"** แถมมาด้วย กดแล้วเปิดหน้าเว็บ Planner ของบัญชีตัวเองได้ทันที
+- ลิงก์ Planner จะอยู่ในรูป `<PUBLIC_BASE_URL>/planner/<userId ภายในระบบ>` — ถือเป็นข้อมูลส่วนตัวของแต่ละคน ไม่ควรแชร์ลิงก์นี้ให้คนอื่น (ระบบยังไม่มีระบบ login แยก ใช้ userId ที่เดายากแทน)
+- ในหน้า Planner: แท็บ "วันนี้/สัปดาห์นี้/เดือนนี้" ดูงาน+นัดหมาย+การแจ้งเตือนรวมกันเป็นตารางเดียว, มีฟอร์มเพิ่มงาน/นัดหมายด่วน, ปุ่ม ✅ เสร็จแล้ว / 🚫 ยกเลิก (เก็บประวัติ) / 🗑️ ลบถาวร (ต้องกดยืนยันอีกครั้ง) ต่อรายการ, แท็บ "การเงิน" ดูสรุปรายรับ-รายจ่ายเดือนนี้พร้อมฟอร์มบันทึกด่วน
+- REST API เบื้องหลัง (`/api/planner/:userId/...`) ก็เรียกตรง ๆ ได้เหมือนกันถ้าต้องการต่อยอดเป็นแอปอื่นในอนาคต
