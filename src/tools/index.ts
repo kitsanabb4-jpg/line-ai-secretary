@@ -52,24 +52,79 @@ function deriveCleanTitle(rawText: string, matchedPhrases: string[] = []): strin
   return cleaned.replace(/\s+/g, " ").trim();
 }
 
-function formatListSection(label: string, emoji: string, items: { time: string; title: string }[]): string {
-  if (items.length === 0) return "";
-  const lines = items.map((i) => `${i.time} ${i.title}`).join("\n");
-  return `${emoji} ${label}\n${lines}`;
+interface DayItem {
+  date: Date;
+  time: string;
+  title: string;
 }
 
-async function buildDayReply(userId: string, dayLabel: string, data: Awaited<ReturnType<typeof taskService.listToday>>) {
-  const items: { time: string; title: string }[] = [];
-  for (const r of data.reminders) items.push({ time: formatThaiTime(r.reminderTime), title: r.title });
-  for (const t of data.tasks.filter((t) => t.dueDate)) items.push({ time: formatThaiTime(t.dueDate!), title: t.title });
-  for (const e of data.events) items.push({ time: formatThaiTime(e.startTime), title: e.title });
-  items.sort((a, b) => a.time.localeCompare(b.time));
+function collectDatedItems(data: { tasks: { dueDate: Date | null; title: string }[]; reminders: { reminderTime: Date; title: string }[]; events: { startTime: Date; title: string }[] }): DayItem[] {
+  const dated: DayItem[] = [];
+  for (const r of data.reminders) dated.push({ date: r.reminderTime, time: formatThaiTime(r.reminderTime), title: r.title });
+  for (const t of data.tasks.filter((t) => t.dueDate)) dated.push({ date: t.dueDate!, time: formatThaiTime(t.dueDate!), title: t.title });
+  for (const e of data.events) dated.push({ date: e.startTime, time: formatThaiTime(e.startTime), title: e.title });
+  // ต้องเรียงตามเวลาจริง (Date object) เสมอ ห้ามเรียงด้วย string เวลาอย่างเดียว
+  // (ถ้าเรียงด้วย "HH:mm" string ตรง ๆ ข้อมูลของคนละวันจะปนกันผิดลำดับ เช่น 09:00 พรุ่งนี้ จะโผล่มาก่อน 20:00 วันนี้)
+  dated.sort((a, b) => a.date.getTime() - b.date.getTime());
+  return dated;
+}
 
-  if (items.length === 0) {
+/** ใช้กับมุมมองวันเดียว (วันนี้/พรุ่งนี้) — แสดงเป็นลิสต์เวลาเรียงตามลำดับ ไม่ต้องมีหัวข้อวันที่ซ้ำ */
+function buildDayReply(dayLabel: string, data: Awaited<ReturnType<typeof taskService.listToday>>) {
+  const dated = collectDatedItems(data);
+  if (dated.length === 0) {
     return `${dayLabel}ไม่มีอะไรในระบบเลยค่ะ 🐷✨`;
   }
-  const lines = items.map((i) => `${i.time} ${i.title}`).join("\n");
-  return `${dayLabel}มี ${items.length} เรื่องค่ะ\n${lines}`;
+  const lines = dated.map((i) => `${i.time} ${i.title}`);
+  return `${dayLabel}มี ${dated.length} เรื่องค่ะ\n${lines.join("\n")}`;
+}
+
+/** หัวข้อของแต่ละวันในมุมมองหลายวัน (สัปดาห์/เดือน) — บอกวันนี้/พรุ่งนี้ตรง ๆ นอกนั้นบอกชื่อวันในสัปดาห์ + วันที่ */
+function formatDateHeader(date: Date): string {
+  const d = toAppTz(date);
+  const todayKey = nowInTz().format("YYYY-MM-DD");
+  const tomorrowKey = nowInTz().add(1, "day").format("YYYY-MM-DD");
+  const key = d.format("YYYY-MM-DD");
+  if (key === todayKey) return `วันนี้ (${d.format("DD/MM")})`;
+  if (key === tomorrowKey) return `พรุ่งนี้ (${d.format("DD/MM")})`;
+  return `${d.locale("th").format("dddd")} ${d.format("DD/MM")}`;
+}
+
+/**
+ * ใช้กับมุมมองหลายวัน (สัปดาห์นี้/เดือนนี้) — จัดกลุ่มตามวันที่จริง พร้อมหัวข้อวันกำกับแต่ละกลุ่ม
+ * (ต่างจาก buildDayReply ตรงที่ข้อมูลคาบเกี่ยวหลายวัน จึงต้องบอกให้ชัดว่าแต่ละรายการอยู่วันไหน
+ * ไม่ใช่โยนมาเป็น flat list เดียวซึ่งทำให้ดูสับสนว่าอันไหนอยู่วันไหน)
+ */
+function buildRangeReply(rangeLabel: string, data: Awaited<ReturnType<typeof taskService.listWeek>>) {
+  const dated = collectDatedItems(data);
+  const undated = data.undatedTasks.map((t) => ({ title: t.title }));
+  if (dated.length === 0 && undated.length === 0) {
+    return `${rangeLabel}ไม่มีอะไรในระบบเลยค่ะ 🐷✨`;
+  }
+
+  const groups: { key: string; header: string; items: DayItem[] }[] = [];
+  for (const item of dated) {
+    const key = toAppTz(item.date).format("YYYY-MM-DD");
+    let group = groups.find((g) => g.key === key);
+    if (!group) {
+      group = { key, header: formatDateHeader(item.date), items: [] };
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+
+  const sections = groups.map((g) => {
+    const lines = g.items.map((i) => `  ${i.time} ${i.title}`).join("\n");
+    return `🔸 ${g.header}\n${lines}`;
+  });
+
+  if (undated.length > 0) {
+    const lines = undated.map((t) => `  • ${t.title}`).join("\n");
+    sections.push(`🔸 งานที่ยังไม่กำหนดวัน\n${lines}`);
+  }
+
+  const total = dated.length + undated.length;
+  return `${rangeLabel}มีทั้งหมด ${total} เรื่องค่ะ\n\n${sections.join("\n\n")}`;
 }
 
 /**
@@ -306,17 +361,22 @@ export async function executeIntent(userId: string, intent: string, params: Inte
     case "LIST_TODAY":
     case "DAILY_SUMMARY": {
       const data = await taskService.listToday(userId);
-      return { reply: await buildDayReply(userId, "☀️ วันนี้", data) };
+      return { reply: buildDayReply("☀️ วันนี้", data) };
     }
 
     case "LIST_TOMORROW": {
       const data = await taskService.listTomorrow(userId);
-      return { reply: await buildDayReply(userId, "🌤️ พรุ่งนี้", data) };
+      return { reply: buildDayReply("🌤️ พรุ่งนี้", data) };
     }
 
     case "LIST_WEEK": {
       const data = await taskService.listWeek(userId);
-      return { reply: await buildDayReply(userId, "📅 สัปดาห์นี้", data) };
+      return { reply: buildRangeReply("📅 สัปดาห์นี้", data) };
+    }
+
+    case "LIST_MONTH": {
+      const data = await taskService.listMonth(userId);
+      return { reply: buildRangeReply("🗓️ เดือนนี้", data) };
     }
 
     case "LIST_PENDING": {
@@ -383,7 +443,7 @@ interface TargetCandidate {
 /**
  * หา entity ที่กำลังพูดถึง (task/reminder/payment/debt/event) — ไม่ใช้แค่ข้อความล่าสุดอย่างเดียว
  * ลำดับการค้นหา:
- *  1) ถ้า targetRef มีเนื้อหาเจาะจง (ไม่ใช่แค่ "อันนั้น"/"เมื่อกี้") -> ค้นหาจากชื่อรายการล่าสุดของทุกหมวดที่ตรงกับคำนั้น (exact match ก่อน แล้วค่อย substring)
+ *  1) ถ้า targetRef มีเนื้อหาเจาะจง (ไม่ใช่แค่ "อันนั้น"/"เมื่อกี้") -> ค้นหาจากชื่อรายการล่าสุดของทุกหมวดที่ตรงกับคำนั้น
  *  2) ถ้าไม่มี/เป็นคำกำกวม -> ใช้ lastEntityRef ที่จำไว้จากข้อความก่อนหน้า
  *  3) ถ้าไม่มีเลย -> ใช้รายการที่สร้าง/แก้ไขล่าสุดสุดในทุกหมวดรวมกัน
  */
