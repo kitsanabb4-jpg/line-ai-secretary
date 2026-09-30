@@ -77,6 +77,7 @@ model User {
   debts          Debt[]
   medications    Medication[]
   notifications  Notification[]
+  financeRecords FinanceRecord[]
 
   @@index([lineUserId])
 }
@@ -140,9 +141,12 @@ model Task {
   notes       String?
   dueDate     DateTime?
   status      TaskStatus @default(PENDING)
+  priority    String?
   sourceText  String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+  completedAt DateTime?
+  cancelledAt DateTime?
 
   reminders   Reminder[]
 
@@ -176,19 +180,42 @@ model Reminder {
 }
 
 model Event {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  startTime       DateTime
+  endTime         DateTime?
+  location        String?
+  notes           String?
+  status          String    @default("SCHEDULED")
+  priority        String?
+  reminderMinutes Int?
+  recurrenceRule  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+
+  @@index([userId])
+  @@index([startTime])
+  @@index([status])
+}
+
+model FinanceRecord {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title       String
-  startTime   DateTime
-  endTime     DateTime?
-  location    String?
-  notes       String?
+  type        String
+  amount      Float
+  category    String?
+  description String?
+  date        DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([userId])
-  @@index([startTime])
+  @@index([date])
 }
 
 model Payment {
