@@ -4,6 +4,21 @@ import { AIProvider, ChatMessage } from "../provider";
  * Mock AI provider — ใช้ตอน DEMO_MODE หรือยังไม่มี API key ของ AI จริง
  * ทำ intent parsing แบบ rule-based ง่าย ๆ พอให้ทดสอบ flow ทั้งระบบได้ (create/list/complete ฯลฯ)
  * ไม่ฉลาดเท่า LLM จริง แต่ครอบคลุมคำสั่งตัวอย่างใน SETUP.md
+ *
+ * หมายเหตุสำคัญ (แก้ปัญหา "บันทึกงานไม่ค่อยเก่ง"):
+ * ตอนนี้ production ยังใช้ provider ตัวนี้อยู่ (AI_PROVIDER=mock) ดังนั้นความแม่นของ regex ที่นี่
+ * = ความแม่นของบอทจริงที่ user คุยด้วย เดิมทีเงื่อนไข CREATE_TASK แคบมาก
+ * (ต้องมีคำว่า "งาน"/"task" คู่กับ "สร้าง"/"เพิ่ม" เท่านั้น) ทำให้ประโยคทั่วไปที่คนพูดจริง เช่น
+ * "จดงานส่งรายงานพรุ่งนี้", "บันทึกงานประชุมทีม", "พรุ่งนี้ต้องส่งเอกสาร" ไม่ถูกจับเป็น CREATE_TASK เลย
+ * แล้วตกไปที่ GENERAL_CONVERSATION ซึ่งไม่บันทึกอะไรลงฐานข้อมูล -> user รู้สึกว่า "บันทึกงานไม่ได้"
+ * จึงขยาย isLikelyTask() ให้ครอบคลุมคำพูดจริงมากขึ้น (ดูฟังก์ชันด้านล่าง)
+ *
+ * จงใจ "ไม่" ใส่ fallback แบบกว้าง ๆ ที่จับทุกประโยคบอกเล่าที่เหลือให้กลายเป็น CREATE_TASK เพราะ mock
+ * provider นี้ไม่รู้บริบทว่ามี pendingIntent ค้างอยู่หรือไม่ (ดู src/ai/intent.ts ที่ merge ผลลัพธ์กับ
+ * pendingIntent เฉพาะตอน intent="GENERAL_CONVERSATION" เท่านั้น) — ถ้าคำตอบสั้น ๆ ระหว่าง slot-filling
+ * เช่น "สิบโมง", "500" ถูกเดาเป็น CREATE_TASK ไปเอง จะไปแทนที่ pendingIntent เดิมและสร้างรายการซ้อนผิด
+ * โดยไม่ได้ตั้งใจ จึงปล่อยข้อความที่ไม่เข้าเงื่อนไขชัดเจนใด ๆ ให้ตกไปที่ GENERAL_CONVERSATION ตามเดิม
+ * แล้วให้ pendingIntent merge ทำงานตามปกติ
  */
 export class MockAIProvider implements AIProvider {
   name = "mock";
@@ -12,13 +27,12 @@ export class MockAIProvider implements AIProvider {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     const text = (lastUser?.content || "").trim();
 
-    // รูปแบบ intent อย่างง่าย: ถ้าข้อความมีคำว่า "เตือน" -> CREATE_REMINDER
-    // ถ้ามี "วันนี้" + "อะไร" -> LIST_TODAY, ฯลฯ
-    // การ parse วันเวลาจริง ๆ ทำที่ nlu/thaiDate.ts แล้วส่งผลมาที่ params.rawText ให้ intent layer ไป parse ต่อ
     let intent = "GENERAL_CONVERSATION";
+
     if (/(วันนี้).*(มีอะไร|นัด|งาน)/.test(text) || text.includes("สรุปวันนี้")) intent = "LIST_TODAY";
     else if (/(พรุ่งนี้).*(มีอะไร)/.test(text)) intent = "LIST_TOMORROW";
-    else if (/(สัปดาห์นี้|อาทิตย์นี้).*(มีอะไร)/.test(text)) intent = "LIST_WEEK";
+    else if (/(สัปดาห์นี้|อาทิตย์นี้).*(มีอะไร|สรุป)|สรุปสัปดาห์/.test(text)) intent = "LIST_WEEK";
+    else if (/(เดือนนี้|เดือนหน้า).*(มีอะไร|สรุป)|สรุปเดือน|ตารางเดือน/.test(text)) intent = "LIST_MONTH";
     else if (/ค้าง|ยังไม่เสร็จ/.test(text)) intent = "LIST_PENDING";
     else if (/จำไว้ว่า|บันทึกไว้ว่า/.test(text)) intent = "SAVE_MEMORY";
     else if (/(เมื่อกี้|ก่อนหน้านี้).*(บอก|พูด)/.test(text)) intent = "SEARCH_MEMORY";
@@ -31,7 +45,7 @@ export class MockAIProvider implements AIProvider {
     else if (/หนี้/.test(text)) intent = "FINANCIAL_SUMMARY";
     else if (/การเงิน|ต้องจ่าย|ค่าใช้จ่าย|บิล/.test(text)) intent = "CREATE_PAYMENT";
     else if (/เตือน/.test(text)) intent = "CREATE_REMINDER";
-    else if (/task|งาน/.test(text) && /สร้าง|เพิ่ม/.test(text)) intent = "CREATE_TASK";
+    else if (isLikelyTask(text)) intent = "CREATE_TASK";
 
     return JSON.stringify({
       intent,
@@ -41,4 +55,17 @@ export class MockAIProvider implements AIProvider {
       params: { rawText: text },
     });
   }
+}
+
+/** คำพูดที่บ่งชัดว่าเป็นการจด/บันทึกงานหรือสิ่งที่ต้องทำ (ไม่จำเป็นต้องมีคำว่า "สร้าง"/"เพิ่ม" แบบเดิม) */
+function isLikelyTask(text: string): boolean {
+  if (/task|todo/i.test(text)) return true;
+  // "งาน" ร่วมกับคำกริยาการบันทึก/ระบุความมีอยู่ทั่วไป (ไม่บังคับต้องเป็น "สร้าง"/"เพิ่ม" เท่านั้นเหมือนเดิม)
+  if (/งาน/.test(text) && /สร้าง|เพิ่ม|จด|บันทึก|มี/.test(text)) return true;
+  // "ต้อง" + กริยาที่มักใช้พูดถึงสิ่งที่ต้องทำ เช่น "พรุ่งนี้ต้องส่งเอกสาร", "ต้องเตรียมของ"
+  // (กันชนกับ CREATE_PAYMENT ที่มีคำว่า "ต้องจ่าย" อยู่แล้วด้วยเงื่อนไข exclude ท้ายนี้)
+  if (/ต้อง(ทำ|ส่ง|เตรียม|จัดการ|ไป|เช็ค|ตรวจ|โทร|ติดต่อ|นัด)/.test(text)) return true;
+  // จด/บันทึกทั่วไปแบบไม่ใช่ SAVE_MEMORY (ซึ่งต้องมี "...ไว้ว่า" ชัดเจน) — ถือเป็นงานที่ต้องติดตาม
+  if (/^(จด|บันทึก)(?!ไว้ว่า)/.test(text)) return true;
+  return false;
 }
